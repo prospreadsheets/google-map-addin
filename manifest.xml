@@ -18,7 +18,6 @@
 
     <AppDomains>
         <AppDomain>https://maps.googleapis.com</AppDomain>
-        <AppDomain>https://prospreadsheets.github.io</AppDomain>
     </AppDomains>
 
     <Hosts>
@@ -35,11 +34,6 @@
         <Hosts>
             <Host xsi:type="Workbook">
                 <DesktopFormFactor>
-                    <GetStarted>
-                        <Title resid="Addin.GetStarted.Title"/>
-                        <Description resid="Addin.GetStarted.Description"/>
-                        <LearnMoreUrl resid="Addin.GetStarted.LearnMoreUrl"/>
-                    </GetStarted>
                     <FunctionFile resid="Addin.Functions.Url"/>
                     <ExtensionPoint xsi:type="PrimaryCommandSurface">
                         <OfficeTab id="TabHome">
@@ -82,17 +76,14 @@
             <bt:Urls>
                 <bt:Url id="Addin.Functions.Url" DefaultValue="https://prospreadsheets.github.io/google-map-addin/src/taskpane/taskpane.html"/>
                 <bt:Url id="Addin.Taskpane.Url" DefaultValue="https://prospreadsheets.github.io/google-map-addin/src/taskpane/taskpane.html"/>
-                <bt:Url id="Addin.GetStarted.LearnMoreUrl" DefaultValue="https://prospreadsheets.github.io/google-map-addin/"/>
             </bt:Urls>
             <bt:ShortStrings>
                 <bt:String id="Addin.Group.Label" DefaultValue="Google Map"/>
                 <bt:String id="Addin.OpenMap.Label" DefaultValue="Open Map"/>
                 <bt:String id="Addin.OpenMap.Title" DefaultValue="Open Interactive Map"/>
-                <bt:String id="Addin.GetStarted.Title" DefaultValue="Google Map Addin"/>
             </bt:ShortStrings>
             <bt:LongStrings>
                 <bt:String id="Addin.OpenMap.Description" DefaultValue="Opens interactive Google Map with your address data"/>
-                <bt:String id="Addin.GetStarted.Description" DefaultValue="Get started with the Google Map Addin"/>
             </bt:LongStrings>
         </Resources>
     </VersionOverrides>
