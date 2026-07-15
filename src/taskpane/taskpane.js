@@ -29,28 +29,32 @@ function loadMap() {
     document.getElementById("btnReset").disabled    = true;
 
     Excel.run(function(context) {
-        var apiKeyRange  = context.workbook.names.getItem("GMAP_API_KEY").getRange();
-        var mapIdRange   = context.workbook.names.getItem("GMAP_MAP_ID").getRange();
-        var dataRange    = context.workbook.names.getItem("GMAP_DATA").getRange();
-        var zoomRange    = context.workbook.names.getItem("GMAP_LAST_ZOOM").getRange();
-        var latRange     = context.workbook.names.getItem("GMAP_LAST_LAT").getRange();
-        var lngRange     = context.workbook.names.getItem("GMAP_LAST_LNG").getRange();
+        var sheet = context.workbook.sheets.getItem("Temp");
 
-        apiKeyRange.load("values");
-        mapIdRange.load("values");
-        dataRange.load("values");
-        zoomRange.load("values");
-        latRange.load("values");
-        lngRange.load("values");
+        // Read directly from cells - no named ranges needed
+        // Row constants match VBA: ROW_API_KEY=1, ROW_MAP_ID=2, ROW_DATA=3
+        // Cells are 0-based in JS so row 1 = index 0
+        var apiKeyCell   = sheet.getCell(0, 1);  // B1
+        var mapIdCell    = sheet.getCell(1, 1);  // B2
+        var dataCell     = sheet.getCell(2, 1);  // B3
+        var zoomCell     = sheet.getCell(0, 2);  // C1
+        var latCell      = sheet.getCell(0, 3);  // D1
+        var lngCell      = sheet.getCell(0, 4);  // E1
+
+        apiKeyCell.load("values");
+        mapIdCell.load("values");
+        dataCell.load("values");
+        zoomCell.load("values");
+        latCell.load("values");
+        lngCell.load("values");
 
         return context.sync().then(function() {
-            apiKey = apiKeyRange.values[0][0];
-            mapId  = mapIdRange.values[0][0] || "";
-            var raw = dataRange.values[0][0];
-
-            var savedZoom = zoomRange.values[0][0];
-            var savedLat  = latRange.values[0][0];
-            var savedLng  = lngRange.values[0][0];
+            apiKey      = apiKeyCell.values[0][0];
+            mapId       = mapIdCell.values[0][0] || "";
+            var raw     = dataCell.values[0][0];
+            var savedZoom = zoomCell.values[0][0];
+            var savedLat  = latCell.values[0][0];
+            var savedLng  = lngCell.values[0][0];
 
             if (savedZoom && savedZoom !== "") {
                 lastZoom      = parseInt(savedZoom);
@@ -297,7 +301,6 @@ function doCapture(mapDiv) {
 function sendToExcel(base64) {
     setStatus("Sending to Excel...");
 
-    // Split into 30000 char chunks
     const chunkSize = 30000;
     const chunks    = [];
     for (let i = 0; i < base64.length; i += chunkSize) {
@@ -305,23 +308,20 @@ function sendToExcel(base64) {
     }
 
     Excel.run(function(context) {
-        var sheet       = context.workbook.sheets.getItem("Temp");
-        var readyRange  = context.workbook.names.getItem("GMAP_READY").getRange();
-        var chunksRange = context.workbook.names.getItem("GMAP_CHUNKS").getRange();
-        var zoomRange   = context.workbook.names.getItem("GMAP_LAST_ZOOM").getRange();
-        var latRange    = context.workbook.names.getItem("GMAP_LAST_LAT").getRange();
-        var lngRange    = context.workbook.names.getItem("GMAP_LAST_LNG").getRange();
+        var sheet = context.workbook.sheets.getItem("Temp");
 
-        // Write zoom and center
-        zoomRange.values   = [[String(lastZoom)]];
-        latRange.values    = [[String(lastCenterLat)]];
-        lngRange.values    = [[String(lastCenterLng)]];
+        // Write zoom and center - C1, D1, E1 (0-based: row 0, cols 2,3,4)
+        sheet.getCell(0, 2).values = [[String(lastZoom)]];
+        sheet.getCell(0, 3).values = [[String(lastCenterLat)]];
+        sheet.getCell(0, 4).values = [[String(lastCenterLng)]];
 
-        // Write chunk count and ready flag
-        chunksRange.values = [[chunks.length]];
-        readyRange.values  = [["1"]];
+        // Write ready flag - B4 (0-based: row 3, col 1)
+        sheet.getCell(3, 1).values = [["1"]];
 
-        // Write chunks to Temp sheet starting at ROW_IMG_START (row 6, 0-based = 5)
+        // Write chunk count - B5 (0-based: row 4, col 1)
+        sheet.getCell(4, 1).values = [[chunks.length]];
+
+        // Write chunks starting at B6 (0-based: row 5, col 1)
         for (let i = 0; i < chunks.length; i++) {
             sheet.getCell(5 + i, 1).values = [[chunks[i]]];
         }
