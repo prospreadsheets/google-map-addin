@@ -1,11 +1,13 @@
 /* global Office, Excel, google, html2canvas */
 
-let map = null;
-let markers = [];
-let apiKey = null;
-let mapData = null;
-let lastZoom = null;
-let lastCenter = null;
+let map         = null;
+let markers     = [];
+let apiKey      = null;
+let mapId       = null;
+let mapData     = null;
+let lastZoom    = null;
+let lastCenterLat = null;
+let lastCenterLng = null;
 
 Office.onReady(function(info) {
     if (info.host === Office.HostType.Excel) {
@@ -22,42 +24,42 @@ function setStatus(msg) {
 
 function loadMap() {
     setStatus("Reading data from Excel...");
-    document.getElementById("btnLoadMap").disabled = true;
-    document.getElementById("btnCapture").disabled = true;
-    document.getElementById("btnReset").disabled = true;
+    document.getElementById("btnLoadMap").disabled  = true;
+    document.getElementById("btnCapture").disabled  = true;
+    document.getElementById("btnReset").disabled    = true;
 
     Excel.run(function(context) {
         var apiKeyRange  = context.workbook.names.getItem("GMAP_API_KEY").getRange();
+        var mapIdRange   = context.workbook.names.getItem("GMAP_MAP_ID").getRange();
         var dataRange    = context.workbook.names.getItem("GMAP_DATA").getRange();
         var zoomRange    = context.workbook.names.getItem("GMAP_LAST_ZOOM").getRange();
-        var centerRange  = context.workbook.names.getItem("GMAP_LAST_CENTER").getRange();
+        var latRange     = context.workbook.names.getItem("GMAP_LAST_LAT").getRange();
+        var lngRange     = context.workbook.names.getItem("GMAP_LAST_LNG").getRange();
 
         apiKeyRange.load("values");
+        mapIdRange.load("values");
         dataRange.load("values");
         zoomRange.load("values");
-        centerRange.load("values");
+        latRange.load("values");
+        lngRange.load("values");
 
         return context.sync().then(function() {
             apiKey = apiKeyRange.values[0][0];
+            mapId  = mapIdRange.values[0][0] || "";
             var raw = dataRange.values[0][0];
 
-            // Load last saved zoom and center if they exist
-            var savedZoom   = zoomRange.values[0][0];
-            var savedCenter = centerRange.values[0][0];
+            var savedZoom = zoomRange.values[0][0];
+            var savedLat  = latRange.values[0][0];
+            var savedLng  = lngRange.values[0][0];
 
             if (savedZoom && savedZoom !== "") {
-                lastZoom = parseInt(savedZoom);
-            }
-            if (savedCenter && savedCenter !== "") {
-                try {
-                    lastCenter = JSON.parse(savedCenter);
-                } catch(e) {
-                    lastCenter = null;
-                }
+                lastZoom      = parseInt(savedZoom);
+                lastCenterLat = parseFloat(savedLat);
+                lastCenterLng = parseFloat(savedLng);
             }
 
             if (!apiKey || !raw) {
-                setStatus("Error: No data. Run Open_Google_Map_Addin macro first.");
+                setStatus("Error: No data. Run the macro first.");
                 document.getElementById("btnLoadMap").disabled = false;
                 return;
             }
@@ -70,7 +72,7 @@ function loadMap() {
                 return;
             }
 
-            loadGoogleMapsAPI(apiKey);
+            loadGoogleMapsAPI(apiKey, mapId);
         });
     }).catch(function(err) {
         setStatus("Error reading Excel: " + err.message);
@@ -78,18 +80,19 @@ function loadMap() {
     });
 }
 
-function loadGoogleMapsAPI(key) {
+function loadGoogleMapsAPI(key, mid) {
     const existing = document.getElementById("gmaps-script");
     if (existing) existing.remove();
 
     setStatus("Loading Google Maps...");
+    window._gmapMapId = mid;
 
-    const script = document.createElement("script");
-    script.id = "gmaps-script";
-    script.src = "https://maps.googleapis.com/maps/api/js?key=" + key + "&callback=initMap";
-    script.async = true;
-    script.defer = true;
-    script.onerror = function() {
+    const script    = document.createElement("script");
+    script.id       = "gmaps-script";
+    script.src      = "https://maps.googleapis.com/maps/api/js?key=" + key + "&callback=initMap";
+    script.async    = true;
+    script.defer    = true;
+    script.onerror  = function() {
         setStatus("Error: Could not load Google Maps. Check API key.");
         document.getElementById("btnLoadMap").disabled = false;
     };
@@ -104,17 +107,23 @@ function initMap() {
 
     const mapDiv = document.getElementById("map");
 
-    map = new google.maps.Map(mapDiv, {
-        zoom: lastZoom || 12,
-        center: lastCenter || { lat: 0, lng: 0 },
-        mapTypeId: "roadmap",
-        fullscreenControl: false,
-        streetViewControl: false,
-        mapTypeControl: true,
-        zoomControl: true
-    });
+    const mapOptions = {
+        zoom:               lastZoom || 12,
+        center:             { lat: lastCenterLat || 0, lng: lastCenterLng || 0 },
+        mapTypeId:          "roadmap",
+        fullscreenControl:  false,
+        streetViewControl:  false,
+        mapTypeControl:     true,
+        zoomControl:        true
+    };
 
-    const bounds = new google.maps.LatLngBounds();
+    if (window._gmapMapId && window._gmapMapId !== "") {
+        mapOptions.mapId = window._gmapMapId;
+    }
+
+    map = new google.maps.Map(mapDiv, mapOptions);
+
+    const bounds          = new google.maps.LatLngBounds();
     let centerSet         = false;
     let centerLatLng      = null;
     let hasVisibleMarkers = false;
@@ -124,15 +133,17 @@ function initMap() {
         const hideAll  = colDVal.indexOf("hide all")  > -1;
         const hidePin  = hideAll ||
                          colDVal === "yes" ||
-                         colDVal === "y" ||
+                         colDVal === "y"   ||
                          colDVal.indexOf("hide") > -1;
         const isCenter = colDVal.indexOf("center") > -1;
 
+        // Capture first center flagged row
         if (isCenter && !centerSet) {
             centerLatLng = { lat: row.lat, lng: row.lng };
-            centerSet = true;
+            centerSet    = true;
         }
 
+        // Skip hidden pins
         if (hidePin) return;
 
         const position  = new google.maps.LatLng(row.lat, row.lng);
@@ -140,7 +151,7 @@ function initMap() {
         const fontColor = row.fontColor || "#FFFFFF";
         const labelText = String(row.label);
         const charCount = labelText.length;
-        const markerW   = Math.max(30, charCount * 10 + 10);
+        const markerW   = Math.max(32, charCount * 10 + 12);
         const markerH   = 36;
         const fontSize  = charCount <= 2 ? 13 : charCount <= 4 ? 11 : 9;
 
@@ -148,17 +159,17 @@ function initMap() {
             <rect x="1" y="1" width="${markerW - 2}" height="${markerH - 2}"
                   rx="4" ry="4"
                   fill="${fillColor}"
-                  stroke="rgba(0,0,0,0.3)"
-                  stroke-width="1"/>
+                  stroke="rgba(0,0,0,0.4)"
+                  stroke-width="1.5"/>
             <text x="${markerW / 2}" y="${markerH / 2 + fontSize / 3}"
                   text-anchor="middle"
-                  font-family="Arial, sans-serif"
+                  font-family="Arial,sans-serif"
                   font-size="${fontSize}px"
                   font-weight="bold"
                   fill="${fontColor}">${labelText}</text>
             <polygon points="${markerW/2 - 5},${markerH - 1} ${markerW/2 + 5},${markerH - 1} ${markerW/2},${markerH + 8}"
                      fill="${fillColor}"
-                     stroke="rgba(0,0,0,0.3)"
+                     stroke="rgba(0,0,0,0.4)"
                      stroke-width="1"/>
         </svg>`;
 
@@ -166,18 +177,18 @@ function initMap() {
 
         const marker = new google.maps.Marker({
             position: position,
-            map: map,
+            map:      map,
             icon: {
-                url: svgEncoded,
-                scaledSize: new google.maps.Size(markerW, markerH + 10),
-                anchor: new google.maps.Point(markerW / 2, markerH + 10)
+                url:         svgEncoded,
+                scaledSize:  new google.maps.Size(markerW, markerH + 10),
+                anchor:      new google.maps.Point(markerW / 2, markerH + 10)
             },
             title: row.address + " (" + row.label + ")"
         });
 
-        // Info window on click
-        const infoContent = "<strong>" + row.label + "</strong><br>" + row.address;
-        const infoWindow  = new google.maps.InfoWindow({ content: infoContent });
+        const infoWindow = new google.maps.InfoWindow({
+            content: "<strong>" + row.label + "</strong><br>" + row.address
+        });
         marker.addListener("click", function() {
             infoWindow.open(map, marker);
         });
@@ -187,16 +198,13 @@ function initMap() {
         hasVisibleMarkers = true;
     });
 
-    // Set center and zoom
-    if (lastZoom && lastCenter) {
-        // Restore last saved position
+    // Set initial view
+    if (lastZoom && lastCenterLat && lastCenterLng) {
         map.setZoom(lastZoom);
-        map.setCenter(lastCenter);
+        map.setCenter({ lat: lastCenterLat, lng: lastCenterLng });
     } else if (centerSet && centerLatLng) {
-        // Use center flagged row
         map.setCenter(centerLatLng);
     } else if (hasVisibleMarkers) {
-        // Auto fit all markers
         map.fitBounds(bounds);
     }
 
@@ -207,10 +215,11 @@ function initMap() {
 }
 
 function resetView() {
-    lastZoom   = null;
-    lastCenter = null;
-
     if (!map || !mapData) return;
+
+    lastZoom      = null;
+    lastCenterLat = null;
+    lastCenterLng = null;
 
     const bounds          = new google.maps.LatLngBounds();
     let hasVisibleMarkers = false;
@@ -222,17 +231,15 @@ function resetView() {
         const hideAll  = colDVal.indexOf("hide all") > -1;
         const hidePin  = hideAll ||
                          colDVal === "yes" ||
-                         colDVal === "y" ||
+                         colDVal === "y"   ||
                          colDVal.indexOf("hide") > -1;
         const isCenter = colDVal.indexOf("center") > -1;
 
         if (isCenter && !centerSet) {
             centerLatLng = { lat: row.lat, lng: row.lng };
-            centerSet = true;
+            centerSet    = true;
         }
-
         if (hidePin) return;
-
         bounds.extend(new google.maps.LatLng(row.lat, row.lng));
         hasVisibleMarkers = true;
     });
@@ -250,19 +257,20 @@ function captureMap() {
     setStatus("Capturing map...");
     document.getElementById("btnCapture").disabled = true;
 
-    // Save current zoom and center before capturing
+    // Save current zoom and center
     const currentZoom   = map.getZoom();
     const currentCenter = map.getCenter();
-    lastZoom   = currentZoom;
-    lastCenter = { lat: currentCenter.lat(), lng: currentCenter.lng() };
+    lastZoom      = currentZoom;
+    lastCenterLat = currentCenter.lat();
+    lastCenterLng = currentCenter.lng();
 
     const mapDiv = document.getElementById("map");
 
     if (typeof html2canvas === "undefined") {
-        const script    = document.createElement("script");
-        script.src      = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
-        script.onload   = function() { doCapture(mapDiv); };
-        script.onerror  = function() {
+        const script   = document.createElement("script");
+        script.src     = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+        script.onload  = function() { doCapture(mapDiv); };
+        script.onerror = function() {
             setStatus("Error: Could not load capture library.");
             document.getElementById("btnCapture").disabled = false;
         };
@@ -279,35 +287,50 @@ function doCapture(mapDiv) {
         scale:      2
     }).then(function(canvas) {
         const base64 = canvas.toDataURL("image/png").split(",")[1];
-        sendImageToExcel(base64);
+        sendToExcel(base64);
     }).catch(function(err) {
         setStatus("Capture failed: " + err.message);
         document.getElementById("btnCapture").disabled = false;
     });
 }
 
-function sendImageToExcel(base64) {
+function sendToExcel(base64) {
     setStatus("Sending to Excel...");
 
-    // Store zoom and center as strings for VBA
-    const zoomStr   = String(lastZoom || "");
-    const centerStr = lastCenter ? JSON.stringify(lastCenter) : "";
+    // Split into 30000 char chunks
+    const chunkSize = 30000;
+    const chunks    = [];
+    for (let i = 0; i < base64.length; i += chunkSize) {
+        chunks.push(base64.substring(i, i + chunkSize));
+    }
 
     Excel.run(function(context) {
-        var imageRange  = context.workbook.names.getItem("GMAP_IMAGE_DATA").getRange();
-        var flagRange   = context.workbook.names.getItem("GMAP_IMAGE_READY").getRange();
+        var sheet       = context.workbook.sheets.getItem("Temp");
+        var readyRange  = context.workbook.names.getItem("GMAP_READY").getRange();
+        var chunksRange = context.workbook.names.getItem("GMAP_CHUNKS").getRange();
         var zoomRange   = context.workbook.names.getItem("GMAP_LAST_ZOOM").getRange();
-        var centerRange = context.workbook.names.getItem("GMAP_LAST_CENTER").getRange();
+        var latRange    = context.workbook.names.getItem("GMAP_LAST_LAT").getRange();
+        var lngRange    = context.workbook.names.getItem("GMAP_LAST_LNG").getRange();
 
-        imageRange.values  = [[base64]];
-        flagRange.values   = [["1"]];
-        zoomRange.values   = [[zoomStr]];
-        centerRange.values = [[centerStr]];
+        // Write zoom and center
+        zoomRange.values   = [[String(lastZoom)]];
+        latRange.values    = [[String(lastCenterLat)]];
+        lngRange.values    = [[String(lastCenterLng)]];
+
+        // Write chunk count and ready flag
+        chunksRange.values = [[chunks.length]];
+        readyRange.values  = [["1"]];
+
+        // Write chunks to Temp sheet starting at ROW_IMG_START (row 6, 0-based = 5)
+        for (let i = 0; i < chunks.length; i++) {
+            sheet.getCell(5 + i, 1).values = [[chunks[i]]];
+        }
 
         return context.sync().then(function() {
-            setStatus("Done — run Import_Captured_Map_Image in Excel to embed");
+            setStatus("Done — click Import Map Image in Excel ribbon to embed");
             document.getElementById("btnCapture").disabled = false;
         });
+
     }).catch(function(err) {
         setStatus("Error sending to Excel: " + err.message);
         document.getElementById("btnCapture").disabled = false;
