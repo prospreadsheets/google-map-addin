@@ -24,62 +24,19 @@ function setStatus(msg) {
 
 function loadMap() {
     setStatus("Reading data from Excel...");
-    document.getElementById("btnLoadMap").disabled  = true;
-    document.getElementById("btnCapture").disabled  = true;
-    document.getElementById("btnReset").disabled    = true;
+    document.getElementById("btnLoadMap").disabled = true;
 
     Excel.run(function(context) {
-        var sheet = context.workbook.sheets.getItem("Temp");
-
-        // Read directly from cells - no named ranges needed
-        // Row constants match VBA: ROW_API_KEY=1, ROW_MAP_ID=2, ROW_DATA=3
-        // Cells are 0-based in JS so row 1 = index 0
-        var apiKeyCell   = sheet.getCell(0, 1);  // B1
-        var mapIdCell    = sheet.getCell(1, 1);  // B2
-        var dataCell     = sheet.getCell(2, 1);  // B3
-        var zoomCell     = sheet.getCell(0, 2);  // C1
-        var latCell      = sheet.getCell(0, 3);  // D1
-        var lngCell      = sheet.getCell(0, 4);  // E1
-
-        apiKeyCell.load("values");
-        mapIdCell.load("values");
-        dataCell.load("values");
-        zoomCell.load("values");
-        latCell.load("values");
-        lngCell.load("values");
+        // Debug - list all sheet names
+        var sheets = context.workbook.worksheets;
+        sheets.load("items/name");
 
         return context.sync().then(function() {
-            apiKey      = apiKeyCell.values[0][0];
-            mapId       = mapIdCell.values[0][0] || "";
-            var raw     = dataCell.values[0][0];
-            var savedZoom = zoomCell.values[0][0];
-            var savedLat  = latCell.values[0][0];
-            var savedLng  = lngCell.values[0][0];
-
-            if (savedZoom && savedZoom !== "") {
-                lastZoom      = parseInt(savedZoom);
-                lastCenterLat = parseFloat(savedLat);
-                lastCenterLng = parseFloat(savedLng);
-            }
-
-            if (!apiKey || !raw) {
-                setStatus("Error: No data. Run the macro first.");
-                document.getElementById("btnLoadMap").disabled = false;
-                return;
-            }
-
-            try {
-                mapData = JSON.parse(raw);
-            } catch(e) {
-                setStatus("Error: Could not parse map data.");
-                document.getElementById("btnLoadMap").disabled = false;
-                return;
-            }
-
-            loadGoogleMapsAPI(apiKey, mapId);
+            var names = sheets.items.map(function(s) { return s.name; }).join(", ");
+            setStatus("Sheets found: " + names);
         });
     }).catch(function(err) {
-        setStatus("Error reading Excel: " + err.message);
+        setStatus("Error: " + err.message);
         document.getElementById("btnLoadMap").disabled = false;
     });
 }
