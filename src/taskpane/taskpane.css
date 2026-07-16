@@ -52,9 +52,18 @@ button:disabled {
 #status {
     color: #555;
     font-size: 11px;
-}
+}npm
 
 #map {
     flex: 1;
     width: 100%;
+}
+
+/* Hide Google Maps branding and legal text */
+#map a[href*="maps.google"],
+#map .gmnoprint,
+#map .gm-style-cc,
+#map .gm-bundled-control,
+#map img[src*="google"] {
+    display: none !important;
 }

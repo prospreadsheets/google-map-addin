@@ -122,17 +122,22 @@ function initMap() {
     markers = [];
 
     const mapDiv = document.getElementById("map");
-
-    const mapOptions = {
-        zoom:             lastZoom || 12,
-        center:           { lat: lastCenterLat || 0, lng: lastCenterLng || 0 },
-        mapTypeId:        "roadmap",
-        fullscreenControl: false,
-        streetViewControl: false,
-        mapTypeControl:   true,
-        zoomControl:      true,
-        renderingType:    google.maps.RenderingType.RASTER
-    };
+const mapOptions = {
+    zoom:                    lastZoom || 12,
+    center:                  { lat: lastCenterLat || 0, lng: lastCenterLng || 0 },
+    mapTypeId:               "roadmap",
+    renderingType:           google.maps.RenderingType.RASTER,
+    fullscreenControl:       false,
+    streetViewControl:       false,
+    mapTypeControl:          false,  // removes Map/Satellite buttons
+    zoomControl:             true,
+    scaleControl:            false,
+    rotateControl:           false,
+    panControl:              false,
+    // Hide all branding/legal text
+    disableDefaultUI:        false,
+    keyboardShortcuts:       false
+};
 
     if (window._gmapMapId && window._gmapMapId !== "") {
         mapOptions.mapId = window._gmapMapId;
