@@ -36,6 +36,9 @@ function loadMap() {
         var zoomCell   = sheet.getCell(0, 2);
         var latCell    = sheet.getCell(0, 3);
         var lngCell    = sheet.getCell(0, 4);
+        var widthCell  = sheet.getCell(0, 5);  // F1
+        var heightCell = sheet.getCell(0, 6);  // G1
+        
 
         apiKeyCell.load("values");
         mapIdCell.load("values");
@@ -43,7 +46,9 @@ function loadMap() {
         zoomCell.load("values");
         latCell.load("values");
         lngCell.load("values");
-
+        widthCell.load("values");
+        heightCell.load("values");        
+        
         return context.sync().then(function() {
             apiKey = apiKeyCell.values[0][0];
             mapId  = mapIdCell.values[0][0] || "";
@@ -51,6 +56,10 @@ function loadMap() {
             var savedZoom = zoomCell.values[0][0];
             var savedLat  = latCell.values[0][0];
             var savedLng  = lngCell.values[0][0];
+            var imgWidth  = widthCell.values[0][0]  || 400;
+            var imgHeight = heightCell.values[0][0] || 400;
+            window._gmapWidth  = imgWidth;
+            window._gmapHeight = imgHeight;
 
             if (savedZoom && savedZoom !== "") {
                 lastZoom      = parseInt(savedZoom);
@@ -257,18 +266,32 @@ function resetView() {
 
     setStatus("View reset — zoom or pan then click Capture");
 }
-
 function captureMap() {
     setStatus("Capturing map...");
     document.getElementById("btnCapture").disabled = true;
 
-    // Save current zoom and center
     lastZoom      = map.getZoom();
     lastCenterLat = map.getCenter().lat();
     lastCenterLng = map.getCenter().lng();
 
-    // Wait 500ms for map to fully render then capture
-    setTimeout(doCapture, 500);
+    // Resize map div to exact img_rng dimensions
+    // Excel points to pixels: 1 point = 1.333 pixels at 96dpi
+    const pxWidth  = Math.round((window._gmapWidth  || 400) * 1.333);
+    const pxHeight = Math.round((window._gmapHeight || 400) * 1.333);
+
+    const mapDiv = document.getElementById("map");
+    mapDiv.style.width  = pxWidth  + "px";
+    mapDiv.style.height = pxHeight + "px";
+
+    // Trigger map resize event
+    google.maps.event.trigger(map, "resize");
+
+    // Restore center after resize
+    map.setCenter({ lat: lastCenterLat, lng: lastCenterLng });
+    map.setZoom(lastZoom);
+
+    // Wait for map to re-render at new size
+    setTimeout(doCapture, 1000);
 }
 
 function doCapture() {
@@ -281,18 +304,28 @@ function doCapture() {
         scale:           1,
         logging:         false,
         imageTimeout:    0,
-        removeContainer: false
+        removeContainer: false,
+        width:           mapDiv.offsetWidth,
+        height:          mapDiv.offsetHeight
     }).then(function(canvas) {
         const base64 = canvas.toDataURL("image/png").split(",")[1];
         console.log("Capture success - base64 length:", base64.length);
+
+        // Restore map div to full size
+        mapDiv.style.width  = "100%";
+        mapDiv.style.height = "100%";
+        google.maps.event.trigger(map, "resize");
+
         writeChunksToExcel(base64);
     }).catch(function(err) {
         console.log("Capture error:", err);
+        // Restore map div on error too
+        mapDiv.style.width  = "100%";
+        mapDiv.style.height = "100%";
         setStatus("Capture failed: " + (err && err.message ? err.message : String(err)));
         document.getElementById("btnCapture").disabled = false;
     });
 }
-
 function writeChunksToExcel(base64) {
     setStatus("Sending to Excel...");
 
