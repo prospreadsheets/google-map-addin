@@ -286,9 +286,13 @@ function doCapture() {
     }).then(function(canvas) {
         setStatus("Sending to Excel...");
         const base64 = canvas.toDataURL("image/png").split(",")[1];
+        console.log("Base64 length:", base64.length);
         writeChunksToExcel(base64);
     }).catch(function(err) {
-        setStatus("Capture failed: " + err.message);
+        console.log("Capture error full:", err);
+        console.log("Capture error type:", typeof err);
+        console.log("Capture error string:", JSON.stringify(err));
+        setStatus("Capture failed: " + (err && err.message ? err.message : JSON.stringify(err)));
         document.getElementById("btnCapture").disabled = false;
     });
 }
