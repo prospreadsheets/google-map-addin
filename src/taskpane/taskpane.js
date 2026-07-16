@@ -36,9 +36,8 @@ function loadMap() {
         var zoomCell   = sheet.getCell(0, 2);
         var latCell    = sheet.getCell(0, 3);
         var lngCell    = sheet.getCell(0, 4);
-        var widthCell  = sheet.getCell(0, 5);  // F1
-        var heightCell = sheet.getCell(0, 6);  // G1
-        
+        var widthCell  = sheet.getCell(0, 5);
+        var heightCell = sheet.getCell(0, 6);
 
         apiKeyCell.load("values");
         mapIdCell.load("values");
@@ -47,8 +46,8 @@ function loadMap() {
         latCell.load("values");
         lngCell.load("values");
         widthCell.load("values");
-        heightCell.load("values");        
-        
+        heightCell.load("values");
+
         return context.sync().then(function() {
             apiKey = apiKeyCell.values[0][0];
             mapId  = mapIdCell.values[0][0] || "";
@@ -56,10 +55,9 @@ function loadMap() {
             var savedZoom = zoomCell.values[0][0];
             var savedLat  = latCell.values[0][0];
             var savedLng  = lngCell.values[0][0];
-            var imgWidth  = widthCell.values[0][0]  || 400;
-            var imgHeight = heightCell.values[0][0] || 400;
-            window._gmapWidth  = imgWidth;
-            window._gmapHeight = imgHeight;
+
+            window._gmapWidth  = widthCell.values[0][0]  || 408.75;
+            window._gmapHeight = heightCell.values[0][0] || 413.25;
 
             if (savedZoom && savedZoom !== "") {
                 lastZoom      = parseInt(savedZoom);
@@ -90,7 +88,6 @@ function loadMap() {
 }
 
 function loadGoogleMapsAPI(key, mid) {
-    // Only load Google Maps once
     if (typeof google !== "undefined" && typeof google.maps !== "undefined") {
         window._gmapMapId = mid;
         initMap();
@@ -105,7 +102,7 @@ function loadGoogleMapsAPI(key, mid) {
 
     const script   = document.createElement("script");
     script.id      = "gmaps-script";
-    script.src     = "https://maps.googleapis.com/maps/api/js?key=" + key + "&callback=initMap";
+    script.src     = "https://maps.googleapis.com/maps/api/js?key=" + key + "&callback=initMap&v=weekly";
     script.async   = true;
     script.defer   = true;
     script.onerror = function() {
@@ -122,7 +119,8 @@ function initMap() {
     markers = [];
 
     const mapDiv = document.getElementById("map");
-const mapOptions = {
+
+    const mapOptions = {
         zoom:              lastZoom || 12,
         center:            { lat: lastCenterLat || 0, lng: lastCenterLng || 0 },
         mapTypeId:         "roadmap",
@@ -132,7 +130,8 @@ const mapOptions = {
         zoomControl:       true,
         scaleControl:      false,
         rotateControl:     false,
-        keyboardShortcuts: false
+        keyboardShortcuts: false,
+        gestureHandling:   "greedy"
     };
 
     if (window._gmapMapId && window._gmapMapId !== "") {
@@ -140,8 +139,6 @@ const mapOptions = {
     }
 
     map = new google.maps.Map(mapDiv, mapOptions);
-    // Force RASTER rendering after map creation for html2canvas compatibility
-    map.setOptions({ renderingType: google.maps.RenderingType.RASTER });
 
     const bounds          = new google.maps.LatLngBounds();
     let centerSet         = false;
@@ -270,7 +267,6 @@ function resetView() {
     setStatus("View reset — zoom or pan then click Capture");
 }
 
-
 function captureMap() {
     setStatus("Capturing map...");
     document.getElementById("btnCapture").disabled = true;
@@ -279,32 +275,55 @@ function captureMap() {
     lastCenterLat = map.getCenter().lat();
     lastCenterLng = map.getCenter().lng();
 
-    // img_rng exact dimensions from Excel
-    // Excel points to CSS pixels at 96dpi: multiply by 1.333
-    const excelWidth  = window._gmapWidth  || 408.75;
-    const excelHeight = window._gmapHeight || 413.25;
-    const pxWidth     = Math.round(excelWidth  * 1.333);
-    const pxHeight    = Math.round(excelHeight * 1.333);
+    // Resize map div to exact img_rng pixel dimensions
+    // Excel points to CSS pixels at 96dpi: 1 point = 1.333 px
+    const pxWidth  = Math.round((window._gmapWidth  || 408.75) * 1.333);
+    const pxHeight = Math.round((window._gmapHeight || 413.25) * 1.333);
 
     console.log("Capture size px:", pxWidth, "x", pxHeight);
 
-    const mapDiv = document.getElementById("map");
+    const mapDiv        = document.getElementById("map");
     mapDiv.style.width  = pxWidth  + "px";
     mapDiv.style.height = pxHeight + "px";
 
-    // Trigger map resize
+    // Trigger map resize and restore view
     google.maps.event.trigger(map, "resize");
     map.setCenter({ lat: lastCenterLat, lng: lastCenterLng });
     map.setZoom(lastZoom);
 
-    // Wait for re-render
-    setTimeout(doCapture, 1000);
+    // Wait for map to re-render at new size
+    setTimeout(doCapture, 1500);
 }
 
 function doCapture() {
     const mapDiv = document.getElementById("map");
     setStatus("Processing image...");
 
+    // Try direct WebGL canvas capture first
+    const canvases = mapDiv.querySelectorAll("canvas");
+    console.log("Canvas count:", canvases.length);
+
+    for (let i = 0; i < canvases.length; i++) {
+        try {
+            const base64 = canvases[i].toDataURL("image/png").split(",")[1];
+            if (base64 && base64.length > 10000) {
+                console.log("Direct canvas capture success - canvas:", i, "length:", base64.length);
+
+                // Restore map div to full size
+                mapDiv.style.width  = "100%";
+                mapDiv.style.height = "100%";
+                google.maps.event.trigger(map, "resize");
+
+                writeChunksToExcel(base64);
+                return;
+            }
+        } catch(e) {
+            console.log("Canvas", i, "failed:", e.message);
+        }
+    }
+
+    // Fallback to html2canvas
+    console.log("Falling back to html2canvas");
     html2canvas(mapDiv, {
         useCORS:         true,
         allowTaint:      true,
@@ -316,9 +335,9 @@ function doCapture() {
         height:          mapDiv.offsetHeight
     }).then(function(canvas) {
         const base64 = canvas.toDataURL("image/png").split(",")[1];
-        console.log("Capture success - base64 length:", base64.length);
+        console.log("html2canvas capture - length:", base64.length);
 
-        // Restore map div to full size
+        // Restore map div
         mapDiv.style.width  = "100%";
         mapDiv.style.height = "100%";
         google.maps.event.trigger(map, "resize");
@@ -326,17 +345,16 @@ function doCapture() {
         writeChunksToExcel(base64);
     }).catch(function(err) {
         console.log("Capture error:", err);
-        // Restore map div on error too
         mapDiv.style.width  = "100%";
         mapDiv.style.height = "100%";
         setStatus("Capture failed: " + (err && err.message ? err.message : String(err)));
         document.getElementById("btnCapture").disabled = false;
     });
 }
+
 function writeChunksToExcel(base64) {
     setStatus("Sending to Excel...");
 
-    // Split base64 into 30000 char chunks
     const chunkSize = 30000;
     const chunks    = [];
     for (let i = 0; i < base64.length; i += chunkSize) {
@@ -348,18 +366,12 @@ function writeChunksToExcel(base64) {
     Excel.run(function(context) {
         var sheet = context.workbook.worksheets.getItem("Temp");
 
-        // C1, D1, E1 — zoom and center (0-based: row 0, cols 2,3,4)
         sheet.getCell(0, 2).values = [[String(lastZoom)]];
         sheet.getCell(0, 3).values = [[String(lastCenterLat)]];
         sheet.getCell(0, 4).values = [[String(lastCenterLng)]];
-
-        // B4 — ready flag (0-based: row 3, col 1)
         sheet.getCell(3, 1).values = [["1"]];
-
-        // B5 — chunk count (0-based: row 4, col 1)
         sheet.getCell(4, 1).values = [[chunks.length]];
 
-        // B6 onwards — image chunks (0-based: row 5+, col 1)
         for (let i = 0; i < chunks.length; i++) {
             sheet.getCell(5 + i, 1).values = [[chunks[i]]];
         }
