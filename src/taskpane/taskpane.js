@@ -257,7 +257,7 @@ function captureMap() {
     setStatus("Capturing map...");
     document.getElementById("btnCapture").disabled = true;
 
-    // Save current zoom and center
+    // Save zoom and center before capture
     const currentZoom   = map.getZoom();
     const currentCenter = map.getCenter();
     lastZoom      = currentZoom;
@@ -266,6 +266,7 @@ function captureMap() {
 
     const mapDiv = document.getElementById("map");
 
+    // Load html2canvas first, then capture
     if (typeof html2canvas === "undefined") {
         const script   = document.createElement("script");
         script.src     = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
@@ -278,6 +279,64 @@ function captureMap() {
     } else {
         doCapture(mapDiv);
     }
+}
+
+function doCapture(mapDiv) {
+    html2canvas(mapDiv, {
+        useCORS:    true,
+        allowTaint: false,
+        scale:      2
+    }).then(function(canvas) {
+        const base64 = canvas.toDataURL("image/png").split(",")[1];
+
+        // Split into chunks
+        const chunkSize = 30000;
+        const chunks    = [];
+        for (let i = 0; i < base64.length; i += chunkSize) {
+            chunks.push(base64.substring(i, i + chunkSize));
+        }
+
+        // Call Excel.run fresh inside the then() callback
+        writeChunksToExcel(chunks);
+
+    }).catch(function(err) {
+        setStatus("Capture failed: " + err.message);
+        document.getElementById("btnCapture").disabled = false;
+    });
+}
+
+function writeChunksToExcel(chunks) {
+    setStatus("Sending to Excel...");
+
+    // Fresh Excel.run call - not inside any previous context
+    return Excel.run(function(context) {
+        var sheet = context.workbook.worksheets.getItem("Temp");
+
+        // Write zoom and center - C1, D1, E1 (0-based: row 0, cols 2,3,4)
+        sheet.getCell(0, 2).values = [[String(lastZoom)]];
+        sheet.getCell(0, 3).values = [[String(lastCenterLat)]];
+        sheet.getCell(0, 4).values = [[String(lastCenterLng)]];
+
+        // Write ready flag - B4 (0-based: row 3, col 1)
+        sheet.getCell(3, 1).values = [["1"]];
+
+        // Write chunk count - B5 (0-based: row 4, col 1)
+        sheet.getCell(4, 1).values = [[chunks.length]];
+
+        // Write chunks starting at B6 (0-based: row 5, col 1)
+        for (let i = 0; i < chunks.length; i++) {
+            sheet.getCell(5 + i, 1).values = [[chunks[i]]];
+        }
+
+        return context.sync().then(function() {
+            setStatus("Done — click Import Map Image in Excel ribbon to embed");
+            document.getElementById("btnCapture").disabled = false;
+        });
+
+    }).catch(function(err) {
+        setStatus("Error writing to Excel: " + err.message);
+        document.getElementById("btnCapture").disabled = false;
+    });
 }
 
 function doCapture(mapDiv) {
