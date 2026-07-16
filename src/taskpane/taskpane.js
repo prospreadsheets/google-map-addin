@@ -265,26 +265,26 @@ function captureMap() {
     lastCenterLat = currentCenter.lat();
     lastCenterLng = currentCenter.lng();
 
-    // Wait for map to be fully idle before capturing
-    google.maps.event.addListenerOnce(map, "idle", function() {
+    // Small delay to ensure map is fully rendered
+    setTimeout(function() {
         doCapture();
-    });
-
-    // Trigger idle
-    map.panBy(0, 0);
+    }, 500);
 }
 
 function doCapture() {
     const mapDiv = document.getElementById("map");
 
+    setStatus("Processing image...");
+
     html2canvas(mapDiv, {
         useCORS:         true,
         allowTaint:      true,
-        scale:           2,
-        logging:         false,
-        imageTimeout:    15000,
-        removeContainer: true
+        scale:           1,
+        logging:         true,
+        imageTimeout:    0,
+        removeContainer: false
     }).then(function(canvas) {
+        setStatus("Sending to Excel...");
         const base64 = canvas.toDataURL("image/png").split(",")[1];
         writeChunksToExcel(base64);
     }).catch(function(err) {
