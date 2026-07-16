@@ -107,14 +107,15 @@ function initMap() {
 
     const mapDiv = document.getElementById("map");
 
-    const mapOptions = {
+const mapOptions = {
         zoom:               lastZoom || 12,
         center:             { lat: lastCenterLat || 0, lng: lastCenterLng || 0 },
         mapTypeId:          "roadmap",
         fullscreenControl:  false,
         streetViewControl:  false,
         mapTypeControl:     true,
-        zoomControl:        true
+        zoomControl:        true,
+        renderingType:      google.maps.RenderingType.RASTER
     };
 
     if (window._gmapMapId && window._gmapMapId !== "") {
@@ -257,48 +258,35 @@ function captureMap() {
     setStatus("Capturing map...");
     document.getElementById("btnCapture").disabled = true;
 
-    // Save zoom and center before capture
+    // Save current zoom and center
     const currentZoom   = map.getZoom();
     const currentCenter = map.getCenter();
     lastZoom      = currentZoom;
     lastCenterLat = currentCenter.lat();
     lastCenterLng = currentCenter.lng();
 
-    const mapDiv = document.getElementById("map");
+    // Wait for map to be fully idle before capturing
+    google.maps.event.addListenerOnce(map, "idle", function() {
+        doCapture();
+    });
 
-    // Load html2canvas first, then capture
-    if (typeof html2canvas === "undefined") {
-        const script   = document.createElement("script");
-        script.src     = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
-        script.onload  = function() { doCapture(mapDiv); };
-        script.onerror = function() {
-            setStatus("Error: Could not load capture library.");
-            document.getElementById("btnCapture").disabled = false;
-        };
-        document.head.appendChild(script);
-    } else {
-        doCapture(mapDiv);
-    }
+    // Trigger idle
+    map.panBy(0, 0);
 }
 
-function doCapture(mapDiv) {
+function doCapture() {
+    const mapDiv = document.getElementById("map");
+
     html2canvas(mapDiv, {
-        useCORS:    true,
-        allowTaint: false,
-        scale:      2
+        useCORS:         true,
+        allowTaint:      true,
+        scale:           2,
+        logging:         false,
+        imageTimeout:    15000,
+        removeContainer: true
     }).then(function(canvas) {
         const base64 = canvas.toDataURL("image/png").split(",")[1];
-
-        // Split into chunks
-        const chunkSize = 30000;
-        const chunks    = [];
-        for (let i = 0; i < base64.length; i += chunkSize) {
-            chunks.push(base64.substring(i, i + chunkSize));
-        }
-
-        // Call Excel.run fresh inside the then() callback
-        writeChunksToExcel(chunks);
-
+        writeChunksToExcel(base64);
     }).catch(function(err) {
         setStatus("Capture failed: " + err.message);
         document.getElementById("btnCapture").disabled = false;
