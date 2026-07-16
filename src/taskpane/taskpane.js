@@ -123,27 +123,25 @@ function initMap() {
 
     const mapDiv = document.getElementById("map");
 const mapOptions = {
-    zoom:                    lastZoom || 12,
-    center:                  { lat: lastCenterLat || 0, lng: lastCenterLng || 0 },
-    mapTypeId:               "roadmap",
-    renderingType:           google.maps.RenderingType.RASTER,
-    fullscreenControl:       false,
-    streetViewControl:       false,
-    mapTypeControl:          false,  // removes Map/Satellite buttons
-    zoomControl:             true,
-    scaleControl:            false,
-    rotateControl:           false,
-    panControl:              false,
-    // Hide all branding/legal text
-    disableDefaultUI:        false,
-    keyboardShortcuts:       false
-};
+        zoom:              lastZoom || 12,
+        center:            { lat: lastCenterLat || 0, lng: lastCenterLng || 0 },
+        mapTypeId:         "roadmap",
+        fullscreenControl: false,
+        streetViewControl: false,
+        mapTypeControl:    false,
+        zoomControl:       true,
+        scaleControl:      false,
+        rotateControl:     false,
+        keyboardShortcuts: false
+    };
 
     if (window._gmapMapId && window._gmapMapId !== "") {
         mapOptions.mapId = window._gmapMapId;
     }
 
     map = new google.maps.Map(mapDiv, mapOptions);
+    // Force RASTER rendering after map creation for html2canvas compatibility
+    map.setOptions({ renderingType: google.maps.RenderingType.RASTER });
 
     const bounds          = new google.maps.LatLngBounds();
     let centerSet         = false;
@@ -271,6 +269,8 @@ function resetView() {
 
     setStatus("View reset — zoom or pan then click Capture");
 }
+
+
 function captureMap() {
     setStatus("Capturing map...");
     document.getElementById("btnCapture").disabled = true;
@@ -279,23 +279,25 @@ function captureMap() {
     lastCenterLat = map.getCenter().lat();
     lastCenterLng = map.getCenter().lng();
 
-    // Resize map div to exact img_rng dimensions
-    // Excel points to pixels: 1 point = 1.333 pixels at 96dpi
-    const pxWidth  = Math.round((window._gmapWidth  || 400) * 1.333);
-    const pxHeight = Math.round((window._gmapHeight || 400) * 1.333);
+    // img_rng exact dimensions from Excel
+    // Excel points to CSS pixels at 96dpi: multiply by 1.333
+    const excelWidth  = window._gmapWidth  || 408.75;
+    const excelHeight = window._gmapHeight || 413.25;
+    const pxWidth     = Math.round(excelWidth  * 1.333);
+    const pxHeight    = Math.round(excelHeight * 1.333);
+
+    console.log("Capture size px:", pxWidth, "x", pxHeight);
 
     const mapDiv = document.getElementById("map");
     mapDiv.style.width  = pxWidth  + "px";
     mapDiv.style.height = pxHeight + "px";
 
-    // Trigger map resize event
+    // Trigger map resize
     google.maps.event.trigger(map, "resize");
-
-    // Restore center after resize
     map.setCenter({ lat: lastCenterLat, lng: lastCenterLng });
     map.setZoom(lastZoom);
 
-    // Wait for map to re-render at new size
+    // Wait for re-render
     setTimeout(doCapture, 1000);
 }
 
