@@ -24,19 +24,58 @@ function setStatus(msg) {
 
 function loadMap() {
     setStatus("Reading data from Excel...");
-    document.getElementById("btnLoadMap").disabled = true;
+    document.getElementById("btnLoadMap").disabled  = true;
+    document.getElementById("btnCapture").disabled  = true;
+    document.getElementById("btnReset").disabled    = true;
 
     Excel.run(function(context) {
-        // Debug - list all sheet names
-        var sheets = context.workbook.worksheets;
-        sheets.load("items/name");
+        var sheet      = context.workbook.worksheets.getItem("Temp");
+        var apiKeyCell = sheet.getCell(0, 1);
+        var mapIdCell  = sheet.getCell(1, 1);
+        var dataCell   = sheet.getCell(2, 1);
+        var zoomCell   = sheet.getCell(0, 2);
+        var latCell    = sheet.getCell(0, 3);
+        var lngCell    = sheet.getCell(0, 4);
+
+        apiKeyCell.load("values");
+        mapIdCell.load("values");
+        dataCell.load("values");
+        zoomCell.load("values");
+        latCell.load("values");
+        lngCell.load("values");
 
         return context.sync().then(function() {
-            var names = sheets.items.map(function(s) { return s.name; }).join(", ");
-            setStatus("Sheets found: " + names);
+            apiKey        = apiKeyCell.values[0][0];
+            mapId         = mapIdCell.values[0][0] || "";
+            var raw       = dataCell.values[0][0];
+            var savedZoom = zoomCell.values[0][0];
+            var savedLat  = latCell.values[0][0];
+            var savedLng  = lngCell.values[0][0];
+
+            if (savedZoom && savedZoom !== "") {
+                lastZoom      = parseInt(savedZoom);
+                lastCenterLat = parseFloat(savedLat);
+                lastCenterLng = parseFloat(savedLng);
+            }
+
+            if (!apiKey || !raw) {
+                setStatus("Error: No data. Run Open_GoogleMap_Addin_TaskPane macro first.");
+                document.getElementById("btnLoadMap").disabled = false;
+                return;
+            }
+
+            try {
+                mapData = JSON.parse(raw);
+            } catch(e) {
+                setStatus("Error: Could not parse map data.");
+                document.getElementById("btnLoadMap").disabled = false;
+                return;
+            }
+
+            loadGoogleMapsAPI(apiKey, mapId);
         });
     }).catch(function(err) {
-        setStatus("Error: " + err.message);
+        setStatus("Error reading Excel: " + err.message);
         document.getElementById("btnLoadMap").disabled = false;
     });
 }
