@@ -308,6 +308,15 @@ function doCapture(mapDiv) {
 function writeChunksToExcel(chunks) {
     setStatus("Sending to Excel...");
 
+    console.log("Excel type:", typeof Excel);
+    console.log("Excel.run type:", typeof Excel.run);
+    
+    if (typeof Excel === "undefined") {
+        setStatus("Error: Excel object is undefined");
+        document.getElementById("btnCapture").disabled = false;
+        return;
+    }
+
     // Fresh Excel.run call - not inside any previous context
     return Excel.run(function(context) {
         var sheet = context.workbook.worksheets.getItem("Temp");
