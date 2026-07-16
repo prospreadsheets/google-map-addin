@@ -1,11 +1,11 @@
 /* global Office, Excel, google, html2canvas */
 
-let map         = null;
-let markers     = [];
-let apiKey      = null;
-let mapId       = null;
-let mapData     = null;
-let lastZoom    = null;
+let map           = null;
+let markers       = [];
+let apiKey        = null;
+let mapId         = null;
+let mapData       = null;
+let lastZoom      = null;
 let lastCenterLat = null;
 let lastCenterLng = null;
 
@@ -24,9 +24,9 @@ function setStatus(msg) {
 
 function loadMap() {
     setStatus("Reading data from Excel...");
-    document.getElementById("btnLoadMap").disabled  = true;
-    document.getElementById("btnCapture").disabled  = true;
-    document.getElementById("btnReset").disabled    = true;
+    document.getElementById("btnLoadMap").disabled = true;
+    document.getElementById("btnCapture").disabled = true;
+    document.getElementById("btnReset").disabled   = true;
 
     Excel.run(function(context) {
         var sheet      = context.workbook.worksheets.getItem("Temp");
@@ -45,8 +45,8 @@ function loadMap() {
         lngCell.load("values");
 
         return context.sync().then(function() {
-            apiKey        = apiKeyCell.values[0][0];
-            mapId         = mapIdCell.values[0][0] || "";
+            apiKey = apiKeyCell.values[0][0];
+            mapId  = mapIdCell.values[0][0] || "";
             var raw       = dataCell.values[0][0];
             var savedZoom = zoomCell.values[0][0];
             var savedLat  = latCell.values[0][0];
@@ -81,18 +81,25 @@ function loadMap() {
 }
 
 function loadGoogleMapsAPI(key, mid) {
+    // Only load Google Maps once
+    if (typeof google !== "undefined" && typeof google.maps !== "undefined") {
+        window._gmapMapId = mid;
+        initMap();
+        return;
+    }
+
     const existing = document.getElementById("gmaps-script");
     if (existing) existing.remove();
 
     setStatus("Loading Google Maps...");
     window._gmapMapId = mid;
 
-    const script    = document.createElement("script");
-    script.id       = "gmaps-script";
-    script.src      = "https://maps.googleapis.com/maps/api/js?key=" + key + "&callback=initMap";
-    script.async    = true;
-    script.defer    = true;
-    script.onerror  = function() {
+    const script   = document.createElement("script");
+    script.id      = "gmaps-script";
+    script.src     = "https://maps.googleapis.com/maps/api/js?key=" + key + "&callback=initMap";
+    script.async   = true;
+    script.defer   = true;
+    script.onerror = function() {
         setStatus("Error: Could not load Google Maps. Check API key.");
         document.getElementById("btnLoadMap").disabled = false;
     };
@@ -107,15 +114,15 @@ function initMap() {
 
     const mapDiv = document.getElementById("map");
 
-const mapOptions = {
-        zoom:               lastZoom || 12,
-        center:             { lat: lastCenterLat || 0, lng: lastCenterLng || 0 },
-        mapTypeId:          "roadmap",
-        fullscreenControl:  false,
-        streetViewControl:  false,
-        mapTypeControl:     true,
-        zoomControl:        true,
-        renderingType:      google.maps.RenderingType.RASTER
+    const mapOptions = {
+        zoom:             lastZoom || 12,
+        center:           { lat: lastCenterLat || 0, lng: lastCenterLng || 0 },
+        mapTypeId:        "roadmap",
+        fullscreenControl: false,
+        streetViewControl: false,
+        mapTypeControl:   true,
+        zoomControl:      true,
+        renderingType:    google.maps.RenderingType.RASTER
     };
 
     if (window._gmapMapId && window._gmapMapId !== "") {
@@ -138,13 +145,11 @@ const mapOptions = {
                          colDVal.indexOf("hide") > -1;
         const isCenter = colDVal.indexOf("center") > -1;
 
-        // Capture first center flagged row
         if (isCenter && !centerSet) {
             centerLatLng = { lat: row.lat, lng: row.lng };
             centerSet    = true;
         }
 
-        // Skip hidden pins
         if (hidePin) return;
 
         const position  = new google.maps.LatLng(row.lat, row.lng);
@@ -180,9 +185,9 @@ const mapOptions = {
             position: position,
             map:      map,
             icon: {
-                url:         svgEncoded,
-                scaledSize:  new google.maps.Size(markerW, markerH + 10),
-                anchor:      new google.maps.Point(markerW / 2, markerH + 10)
+                url:        svgEncoded,
+                scaledSize: new google.maps.Size(markerW, markerH + 10),
+                anchor:     new google.maps.Point(markerW / 2, markerH + 10)
             },
             title: row.address + " (" + row.label + ")"
         });
@@ -199,7 +204,6 @@ const mapOptions = {
         hasVisibleMarkers = true;
     });
 
-    // Set initial view
     if (lastZoom && lastCenterLat && lastCenterLng) {
         map.setZoom(lastZoom);
         map.setCenter({ lat: lastCenterLat, lng: lastCenterLng });
@@ -259,72 +263,63 @@ function captureMap() {
     document.getElementById("btnCapture").disabled = true;
 
     // Save current zoom and center
-    const currentZoom   = map.getZoom();
-    const currentCenter = map.getCenter();
-    lastZoom      = currentZoom;
-    lastCenterLat = currentCenter.lat();
-    lastCenterLng = currentCenter.lng();
+    lastZoom      = map.getZoom();
+    lastCenterLat = map.getCenter().lat();
+    lastCenterLng = map.getCenter().lng();
 
-    // Small delay to ensure map is fully rendered
-    setTimeout(function() {
-        doCapture();
-    }, 500);
+    // Wait 500ms for map to fully render then capture
+    setTimeout(doCapture, 500);
 }
 
 function doCapture() {
     const mapDiv = document.getElementById("map");
-
     setStatus("Processing image...");
 
     html2canvas(mapDiv, {
         useCORS:         true,
         allowTaint:      true,
         scale:           1,
-        logging:         true,
+        logging:         false,
         imageTimeout:    0,
         removeContainer: false
     }).then(function(canvas) {
-        setStatus("Sending to Excel...");
         const base64 = canvas.toDataURL("image/png").split(",")[1];
-        console.log("Base64 length:", base64.length);
+        console.log("Capture success - base64 length:", base64.length);
         writeChunksToExcel(base64);
     }).catch(function(err) {
-        console.log("Capture error full:", err);
-        console.log("Capture error type:", typeof err);
-        console.log("Capture error string:", JSON.stringify(err));
-        setStatus("Capture failed: " + (err && err.message ? err.message : JSON.stringify(err)));
+        console.log("Capture error:", err);
+        setStatus("Capture failed: " + (err && err.message ? err.message : String(err)));
         document.getElementById("btnCapture").disabled = false;
     });
 }
 
-function writeChunksToExcel(chunks) {
+function writeChunksToExcel(base64) {
     setStatus("Sending to Excel...");
 
-    console.log("Excel type:", typeof Excel);
-    console.log("Excel.run type:", typeof Excel.run);
-    
-    if (typeof Excel === "undefined") {
-        setStatus("Error: Excel object is undefined");
-        document.getElementById("btnCapture").disabled = false;
-        return;
+    // Split base64 into 30000 char chunks
+    const chunkSize = 30000;
+    const chunks    = [];
+    for (let i = 0; i < base64.length; i += chunkSize) {
+        chunks.push(base64.substring(i, i + chunkSize));
     }
 
-    // Fresh Excel.run call - not inside any previous context
-    return Excel.run(function(context) {
+    console.log("Total chunks:", chunks.length);
+
+    Excel.run(function(context) {
         var sheet = context.workbook.worksheets.getItem("Temp");
 
-        // Write zoom and center - C1, D1, E1 (0-based: row 0, cols 2,3,4)
+        // C1, D1, E1 — zoom and center (0-based: row 0, cols 2,3,4)
         sheet.getCell(0, 2).values = [[String(lastZoom)]];
         sheet.getCell(0, 3).values = [[String(lastCenterLat)]];
         sheet.getCell(0, 4).values = [[String(lastCenterLng)]];
 
-        // Write ready flag - B4 (0-based: row 3, col 1)
+        // B4 — ready flag (0-based: row 3, col 1)
         sheet.getCell(3, 1).values = [["1"]];
 
-        // Write chunk count - B5 (0-based: row 4, col 1)
+        // B5 — chunk count (0-based: row 4, col 1)
         sheet.getCell(4, 1).values = [[chunks.length]];
 
-        // Write chunks starting at B6 (0-based: row 5, col 1)
+        // B6 onwards — image chunks (0-based: row 5+, col 1)
         for (let i = 0; i < chunks.length; i++) {
             sheet.getCell(5 + i, 1).values = [[chunks[i]]];
         }
@@ -336,59 +331,6 @@ function writeChunksToExcel(chunks) {
 
     }).catch(function(err) {
         setStatus("Error writing to Excel: " + err.message);
-        document.getElementById("btnCapture").disabled = false;
-    });
-}
-
-function doCapture(mapDiv) {
-    html2canvas(mapDiv, {
-        useCORS:    true,
-        allowTaint: false,
-        scale:      2
-    }).then(function(canvas) {
-        const base64 = canvas.toDataURL("image/png").split(",")[1];
-        sendToExcel(base64);
-    }).catch(function(err) {
-        setStatus("Capture failed: " + err.message);
-        document.getElementById("btnCapture").disabled = false;
-    });
-}
-
-function sendToExcel(base64) {
-    setStatus("Sending to Excel...");
-
-    const chunkSize = 30000;
-    const chunks    = [];
-    for (let i = 0; i < base64.length; i += chunkSize) {
-        chunks.push(base64.substring(i, i + chunkSize));
-    }
-
-    Excel.run(function(context) {
-        var sheet = context.workbook.sheets.getItem("Temp");
-
-        // Write zoom and center - C1, D1, E1 (0-based: row 0, cols 2,3,4)
-        sheet.getCell(0, 2).values = [[String(lastZoom)]];
-        sheet.getCell(0, 3).values = [[String(lastCenterLat)]];
-        sheet.getCell(0, 4).values = [[String(lastCenterLng)]];
-
-        // Write ready flag - B4 (0-based: row 3, col 1)
-        sheet.getCell(3, 1).values = [["1"]];
-
-        // Write chunk count - B5 (0-based: row 4, col 1)
-        sheet.getCell(4, 1).values = [[chunks.length]];
-
-        // Write chunks starting at B6 (0-based: row 5, col 1)
-        for (let i = 0; i < chunks.length; i++) {
-            sheet.getCell(5 + i, 1).values = [[chunks[i]]];
-        }
-
-        return context.sync().then(function() {
-            setStatus("Done — click Import Map Image in Excel ribbon to embed");
-            document.getElementById("btnCapture").disabled = false;
-        });
-
-    }).catch(function(err) {
-        setStatus("Error sending to Excel: " + err.message);
         document.getElementById("btnCapture").disabled = false;
     });
 }
